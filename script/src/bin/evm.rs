@@ -10,9 +10,8 @@
 //! RUST_LOG=info cargo run --release --bin evm -- --system plonk
 //! ```
 
-use alloy_sol_types::SolType;
 use clap::{Parser, ValueEnum};
-use fibonacci_lib::PublicValuesStruct;
+use mpt_lib::{MPTProofInput, MPTVerificationResult};
 use serde::{Deserialize, Serialize};
 use sp1_sdk::{
     include_elf, HashableKey, ProverClient, SP1ProofWithPublicValues, SP1Stdin, SP1VerifyingKey,
@@ -20,14 +19,12 @@ use sp1_sdk::{
 use std::path::PathBuf;
 
 /// The ELF (executable and linkable format) file for the Succinct RISC-V zkVM.
-pub const FIBONACCI_ELF: &[u8] = include_elf!("fibonacci-program");
+pub const MPT_ELF: &[u8] = include_elf!("mpt-program");
 
 /// The arguments for the EVM command.
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct EVMArgs {
-    #[arg(long, default_value = "20")]
-    n: u32,
     #[arg(long, value_enum, default_value = "groth16")]
     system: ProofSystem,
 }
@@ -42,10 +39,11 @@ enum ProofSystem {
 /// A fixture that can be used to test the verification of SP1 zkVM proofs inside Solidity.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct SP1FibonacciProofFixture {
-    a: u32,
-    b: u32,
-    n: u32,
+struct SP1MPTProofFixture {
+    verified: bool,
+    key: String,
+    value: String,
+    root: String,
     vkey: String,
     public_values: String,
     proof: String,
@@ -62,13 +60,20 @@ fn main() {
     let client = ProverClient::from_env();
 
     // Setup the program.
-    let (pk, vk) = client.setup(FIBONACCI_ELF);
+    let (pk, vk) = client.setup(MPT_ELF);
+
+    // Create a sample MPT proof input
+    let input = MPTProofInput {
+        key: hex::decode("1234").unwrap(),
+        value: b"test_value".to_vec(),
+        proof: vec![],
+        root: [0u8; 32],
+    };
 
     // Setup the inputs.
     let mut stdin = SP1Stdin::new();
-    stdin.write(&args.n);
+    stdin.write(&input);
 
-    println!("n: {}", args.n);
     println!("Proof System: {:?}", args.system);
 
     // Generate the proof based on the selected proof system.
@@ -89,13 +94,14 @@ fn create_proof_fixture(
 ) {
     // Deserialize the public values.
     let bytes = proof.public_values.as_slice();
-    let PublicValuesStruct { n, a, b } = PublicValuesStruct::abi_decode(bytes).unwrap();
+    let result: MPTVerificationResult = bincode::deserialize(bytes).unwrap();
 
     // Create the testing fixture so we can test things end-to-end.
-    let fixture = SP1FibonacciProofFixture {
-        a,
-        b,
-        n,
+    let fixture = SP1MPTProofFixture {
+        verified: result.verified,
+        key: hex::encode(&result.key),
+        value: hex::encode(&result.value),
+        root: hex::encode(&result.root),
         vkey: vk.bytes32().to_string(),
         public_values: format!("0x{}", hex::encode(bytes)),
         proof: format!("0x{}", hex::encode(proof.bytes())),

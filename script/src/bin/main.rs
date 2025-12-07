@@ -1,5 +1,4 @@
-//! An end-to-end example of using the SP1 SDK to generate a proof of a program that can be executed
-//! or have a core proof generated.
+//! MPT Proof Generation and Verification Script
 //!
 //! You can run this script using the following command:
 //! ```shell
@@ -10,13 +9,12 @@
 //! RUST_LOG=info cargo run --release -- --prove
 //! ```
 
-use alloy_sol_types::SolType;
 use clap::Parser;
-use fibonacci_lib::PublicValuesStruct;
+use mpt_lib::{MPTProofInput, MPTVerificationResult};
 use sp1_sdk::{include_elf, ProverClient, SP1Stdin};
 
 /// The ELF (executable and linkable format) file for the Succinct RISC-V zkVM.
-pub const FIBONACCI_ELF: &[u8] = include_elf!("fibonacci-program");
+pub const MPT_ELF: &[u8] = include_elf!("mpt-program");
 
 /// The arguments for the command.
 #[derive(Parser, Debug)]
@@ -27,9 +25,6 @@ struct Args {
 
     #[arg(long)]
     prove: bool,
-
-    #[arg(long, default_value = "20")]
-    n: u32,
 }
 
 fn main() {
@@ -48,45 +43,59 @@ fn main() {
     // Setup the prover client.
     let client = ProverClient::from_env();
 
+    // Create a sample MPT proof input
+    let input = MPTProofInput {
+        key: hex::decode("1234").unwrap(),
+        value: b"test_value".to_vec(),
+        proof: vec![],  // Empty for now, will be populated in later phases
+        root: [0u8; 32],
+    };
+
     // Setup the inputs.
     let mut stdin = SP1Stdin::new();
-    stdin.write(&args.n);
+    stdin.write(&input);
 
-    println!("n: {}", args.n);
+    println!("MPT Proof Input:");
+    println!("  Key: {}", hex::encode(&input.key));
+    println!("  Value: {}", String::from_utf8_lossy(&input.value));
+    println!("  Root: {}", hex::encode(&input.root));
 
     if args.execute {
         // Execute the program
-        let (output, report) = client.execute(FIBONACCI_ELF, &stdin).run().unwrap();
+        let (mut output, report) = client.execute(MPT_ELF, &stdin).run().unwrap();
         println!("Program executed successfully.");
 
         // Read the output.
-        let decoded = PublicValuesStruct::abi_decode(output.as_slice()).unwrap();
-        let PublicValuesStruct { n, a, b } = decoded;
-        println!("n: {}", n);
-        println!("a: {}", a);
-        println!("b: {}", b);
-
-        let (expected_a, expected_b) = fibonacci_lib::fibonacci(n);
-        assert_eq!(a, expected_a);
-        assert_eq!(b, expected_b);
-        println!("Values are correct!");
+        let result: MPTVerificationResult = output.read();
+        println!("\nVerification Result:");
+        println!("  Verified: {}", result.verified);
+        println!("  Key: {}", hex::encode(&result.key));
+        println!("  Value: {}", String::from_utf8_lossy(&result.value));
+        println!("  Root: {}", hex::encode(&result.root));
 
         // Record the number of cycles executed.
-        println!("Number of cycles: {}", report.total_instruction_count());
+        println!("\nNumber of cycles: {}", report.total_instruction_count());
     } else {
         // Setup the program for proving.
-        let (pk, vk) = client.setup(FIBONACCI_ELF);
+        let (pk, vk) = client.setup(MPT_ELF);
 
         // Generate the proof
-        let proof = client
+        let mut proof = client
             .prove(&pk, &stdin)
             .run()
             .expect("failed to generate proof");
 
         println!("Successfully generated proof!");
 
+        // Read the output from the proof
+        let result: MPTVerificationResult = proof.public_values.read();
+        println!("\nVerification Result:");
+        println!("  Verified: {}", result.verified);
+        println!("  Key: {}", hex::encode(&result.key));
+        println!("  Value: {}", String::from_utf8_lossy(&result.value));
+
         // Verify the proof.
         client.verify(&proof, &vk).expect("failed to verify proof");
-        println!("Successfully verified proof!");
+        println!("\nSuccessfully verified proof!");
     }
 }
