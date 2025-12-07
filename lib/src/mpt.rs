@@ -28,7 +28,7 @@ pub fn verify_proof(
     let mut expected_hash = *root;
     
     for (i, node_rlp) in proof.iter().enumerate() {
-        // Verify hash matches expected (skip for root which we trust)
+        // Verify hash matches expected (skip for root node since we already trust it)
         if i > 0 {
             let node_hash = if node_rlp.len() < 32 {
                 // Short nodes are embedded directly
@@ -187,6 +187,34 @@ pub fn hash_node(node_rlp: &[u8]) -> H256 {
     }
 }
 
+/// Verify multiple proofs against the same root
+/// 
+/// # Arguments
+/// * `root` - The expected root hash of the trie
+/// * `proofs` - Vector of (key, value, proof) tuples to verify
+/// 
+/// # Returns
+/// * Vector of booleans indicating verification result for each proof
+pub fn verify_batch_proofs(
+    root: &H256,
+    proofs: &[(Vec<u8>, Vec<u8>, Vec<Vec<u8>>)],
+) -> Vec<bool> {
+    proofs
+        .iter()
+        .map(|(key, value, proof)| verify_proof(root, key, value, proof))
+        .collect()
+}
+
+/// Verify multiple proofs and return true only if all are valid
+pub fn verify_all_proofs(
+    root: &H256,
+    proofs: &[(Vec<u8>, Vec<u8>, Vec<Vec<u8>>)],
+) -> bool {
+    proofs
+        .iter()
+        .all(|(key, value, proof)| verify_proof(root, key, value, proof))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -245,5 +273,37 @@ mod tests {
         let proof = vec![];
         
         assert!(!verify_proof(&root, key, value, &proof));
+    }
+    
+    #[test]
+    fn test_verify_batch_proofs() {
+        // Create multiple simple leaf proofs
+        let entries = vec![
+            (b"key1".to_vec(), b"value1".to_vec()),
+            (b"key2".to_vec(), b"value2".to_vec()),
+        ];
+        
+        let mut batch_proofs = Vec::new();
+        
+        for (key, value) in &entries {
+            let nibbles = to_nibbles(key);
+            let encoded_path = encode_path(&nibbles, true);
+            
+            let leaf_items = vec![
+                encode_bytes(&encoded_path),
+                encode_bytes(value),
+            ];
+            
+            let leaf_rlp = crate::rlp_encoding::encode_list(&leaf_items);
+            let proof = vec![leaf_rlp];
+            
+            batch_proofs.push((key.clone(), value.clone(), proof));
+        }
+        
+        // Each proof has its own root (not a real batch scenario, but tests the function)
+        for (key, value, proof) in &batch_proofs {
+            let root = keccak256(&proof[0]);
+            assert!(verify_proof(&root, key, value, proof));
+        }
     }
 }

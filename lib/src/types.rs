@@ -36,3 +36,19 @@ pub struct MPTVerificationResult {
     pub value: Vec<u8>,
     pub root: H256,
 }
+
+/// Batch proof input for multiple key-value pairs
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MPTBatchProofInput {
+    pub proofs: Vec<MPTProofInput>,
+    pub root: H256,
+}
+
+/// Batch verification result
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MPTBatchVerificationResult {
+    pub all_verified: bool,
+    pub individual_results: Vec<bool>,
+    pub root: H256,
+    pub count: usize,
+}
