@@ -5,16 +5,23 @@
 #![no_main]
 sp1_zkvm::entrypoint!(main);
 
-use mpt_lib::{MPTProofInput, MPTVerificationResult};
+use mpt_lib::{MPTProofInput, MPTVerificationResult, verify_proof};
 
 pub fn main() {
     // Read the proof input from the host
     let input: MPTProofInput = sp1_zkvm::io::read();
     
-    // For now, we'll just echo back the input as verified
-    // In Phase 5, we'll implement actual verification logic
+    // Verify the MPT proof
+    let verified = verify_proof(
+        &input.root,
+        &input.key,
+        &input.value,
+        &input.proof,
+    );
+    
+    // Create the verification result
     let result = MPTVerificationResult {
-        verified: true,
+        verified,
         key: input.key,
         value: input.value,
         root: input.root,

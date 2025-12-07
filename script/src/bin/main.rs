@@ -10,7 +10,7 @@
 //! ```
 
 use clap::Parser;
-use mpt_lib::{MPTProofInput, MPTVerificationResult};
+use mpt_lib::{MPTProofInput, MPTVerificationResult, MPTBuilder};
 use sp1_sdk::{include_elf, ProverClient, SP1Stdin};
 
 /// The ELF (executable and linkable format) file for the Succinct RISC-V zkVM.
@@ -43,19 +43,32 @@ fn main() {
     // Setup the prover client.
     let client = ProverClient::from_env();
 
-    // Create a sample MPT proof input
+    // Build a simple MPT with one key-value pair
+    let mut builder = MPTBuilder::new();
+    let key = b"hello";
+    let value = b"world";
+    
+    println!("Building MPT...");
+    let root = builder.insert(key, value);
+    println!("  Root: {}", hex::encode(root));
+    
+    // Generate proof
+    let proof = builder.get_proof(key).expect("Failed to generate proof");
+    println!("  Proof nodes: {}", proof.len());
+    
+    // Create MPT proof input
     let input = MPTProofInput {
-        key: hex::decode("1234").unwrap(),
-        value: b"test_value".to_vec(),
-        proof: vec![],  // Empty for now, will be populated in later phases
-        root: [0u8; 32],
+        key: key.to_vec(),
+        value: value.to_vec(),
+        proof,
+        root,
     };
 
     // Setup the inputs.
     let mut stdin = SP1Stdin::new();
     stdin.write(&input);
 
-    println!("MPT Proof Input:");
+    println!("\nMPT Proof Input:");
     println!("  Key: {}", hex::encode(&input.key));
     println!("  Value: {}", String::from_utf8_lossy(&input.value));
     println!("  Root: {}", hex::encode(&input.root));
@@ -63,7 +76,7 @@ fn main() {
     if args.execute {
         // Execute the program
         let (mut output, report) = client.execute(MPT_ELF, &stdin).run().unwrap();
-        println!("Program executed successfully.");
+        println!("\nProgram executed successfully.");
 
         // Read the output.
         let result: MPTVerificationResult = output.read();
@@ -85,7 +98,7 @@ fn main() {
             .run()
             .expect("failed to generate proof");
 
-        println!("Successfully generated proof!");
+        println!("\nSuccessfully generated proof!");
 
         // Read the output from the proof
         let result: MPTVerificationResult = proof.public_values.read();
