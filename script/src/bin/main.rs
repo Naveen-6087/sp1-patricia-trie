@@ -45,16 +45,30 @@ fn main() {
 
     // Build a simple MPT with one key-value pair
     let mut builder = MPTBuilder::new();
-    let key = b"hello";
-    let value = b"world";
     
-    println!("Building MPT...");
-    let root = builder.insert(key, value);
+    println!("Building MPT with multiple entries...");
+    // Insert multiple key-value pairs to create a complex trie structure
+    builder.insert(b"do", b"verb");
+    builder.insert(b"dog", b"puppy");
+    builder.insert(b"doge", b"coin");
+    builder.insert(b"horse", b"stallion");
+    
+    let root = builder.root().expect("Root should exist");
     println!("  Root: {}", hex::encode(root));
+    
+    // Generate a proof for one of the keys
+    let key = b"dog";
+    let value = b"puppy";
+    
+    // Verify locally first
+    println!("  Verifying 'dog' retrieval...");
+    let retrieved = builder.get(key).expect("Key should exist");
+    assert_eq!(retrieved, value);
+    println!("  Local retrieval successful!");
     
     // Generate proof
     let proof = builder.get_proof(key).expect("Failed to generate proof");
-    println!("  Proof nodes: {}", proof.len());
+    println!("  Proof nodes for 'dog': {}", proof.len());
     
     // Create MPT proof input
     let input = MPTProofInput {
