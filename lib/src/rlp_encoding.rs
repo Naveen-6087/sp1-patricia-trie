@@ -1,11 +1,16 @@
-use sha3::{Digest, Keccak256};
 use crate::types::H256;
 
 /// Compute Keccak256 hash
+/// 
+/// When running in SP1 zkVM, tiny_keccak automatically uses the optimized
+/// KECCAK_PERMUTE precompile syscall for better performance.
 pub fn keccak256(data: &[u8]) -> H256 {
-    let mut hasher = Keccak256::new();
+    use tiny_keccak::{Hasher, Keccak};
+    let mut hasher = Keccak::v256();
     hasher.update(data);
-    hasher.finalize().into()
+    let mut output = [0u8; 32];
+    hasher.finalize(&mut output);
+    output.into()
 }
 
 /// Encode a byte string using RLP
